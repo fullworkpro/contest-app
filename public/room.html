@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>竞赛系统 - 等候室</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+    .container { max-width: 400px; margin: 0 auto; }
+    .header { text-align: center; margin-bottom: 24px; }
+    .room-info { background: white; border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+    .room-code { font-size: 32px; font-weight: bold; color: #667eea; letter-spacing: 8px; text-align: center; margin: 16px 0; }
+    .hint { text-align: center; color: #666; font-size: 14px; margin-bottom: 16px; }
+    .copy-btn { display: block; margin: 0 auto 16px; padding: 8px 24px; background: #f0f0f0; border: none; border-radius: 20px; cursor: pointer; font-size: 14px; }
+    .player-list { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+    .player-list h2 { font-size: 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .player-count { background: #667eea; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; }
+    .player-item { display: flex; align-items: center; padding: 12px; background: #f8f9fa; border-radius: 10px; margin-bottom: 8px; }
+    .player-avatar { width: 40px; height: 40px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; margin-right: 12px; }
+    .player-name { flex: 1; font-weight: 500; }
+    .player-status { font-size: 12px; color: #999; }
+    .ready-badge { background: #4caf50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; }
+    .waiting-badge { background: #ff9800; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; }
+    .btn { width: 100%; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 16px; }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+    .status-line { text-align: center; color: #666; margin-top: 16px; font-size: 14px; }
+    .qr-section { text-align: center; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="color: white; font-size: 28px;">🏆 竞赛房间</h1>
+    </div>
+    
+    <div class="room-info">
+      <p class="hint">房间号（分享给朋友加入）</p>
+      <div class="room-code" id="roomCode">------</div>
+      <button class="copy-btn" onclick="copyRoomCode()">📋 复制房间号</button>
+      <p class="hint">扫码或输入房间号加入竞赛</p>
+    </div>
+    
+    <div class="player-list">
+      <h2>参与者 <span class="player-count" id="playerCount">0</span></h2>
+      <div id="playerList"></div>
+    </div>
+    
+    <button class="btn" id="startBtn" onclick="startGame()">🔔 所有人已就绪，开始比赛</button>
+    <p class="status-line" id="statusLine">等待其他人加入...</p>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room') || '';
+    let token = localStorage.getItem('contest_token_' + roomId);
+    const nickname = localStorage.getItem('contest_nickname') || '匿���玩家';
+    
+    let socket;
+    let joined = false;
+    
+    async function init() {
+      if (!roomId) {
+        alert('无效的房间号');
+        window.location.href = '/';
+        return;
+      }
+      
+      document.getElementById('roomCode').textContent = roomId;
+      
+      // 加入房间
+      try {
+        const res = await fetch('/api/room/join', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ roomId, nickname, token })
+        });
+        const data = await res.json();
+        
+        if (!data.success) {
+          alert(data.error || '加入失败');
+          window.location.href = '/';
+          return;
+        }
+        
+        token = data.token;
+        localStorage.setItem('contest_token_' + roomId, token);
+        localStorage.setItem('contest_nickname', nickname);
+        
+        updateRoomStatus(data.room);
+        connectSocket();
+        
+      } catch(e) {
+        alert('网络错误');
+        window.location.href = '/';
+      }
+    }
+    
+    function connectSocket() {
+      socket = io();
+      
+      socket.on('connect', () => {
+        socket.emit('join-room', { roomId, token, nickname });
+      });
+      
+      socket.on('player-joined', (data) => {
+        updatePlayerList(data.players);
+      });
+      
+      socket.on('player-left', (data) => {
+        updatePlayerList(data.players);
+      });
+      
+      socket.on('game-started', (data) => {
+        // 进入答题页面
+        window.location.href = '/contest.html?room=' + roomId + '&token=' + token;
+      });
+      
+      // 获取初始玩家列表
+      fetchRoomStatus();
+    }
+    
+    async function fetchRoomStatus() {
+      try {
+        const res = await fetch('/api/room/' + roomId);
+        const data = await res.json();
+        if (data.success) {
+          updateRoomStatus(data.room);
+        }
+      } catch(e) {}
+    }
+    
+    function updateRoomStatus(room) {
+      if (room.status === 'running') {
+        window.location.href = '/contest.html?room=' + roomId + '&token=' + token;
+      }
+      updatePlayerList(room.players);
+    }
+    
+    function updatePlayerList(players) {
+      const list = document.getElementById('playerList');
+      document.getElementById('playerCount').textContent = players.length;
+      
+      list.innerHTML = players.map(p => `
+        <div class="player-item">
+          <div class="player-avatar">${p.nickname.charAt(0)}</div>
+          <div class="player-name">${p.nickname}</div>
+          <div>${p.ready || p.finished ? '<span class="ready-badge">✓ 已就绪</span>' : '<span class="waiting-badge">等待中</span>'}</div>
+        </div>
+      `).join('');
+      
+      const startBtn = document.getElementById('startBtn');
+      const statusLine = document.getElementById('statusLine');
+      
+      const allReady = players.length > 0 && players.every(p => p.ready || p.finished);
+      const canStart = players.length > 0;
+      
+      startBtn.disabled = !canStart;
+      startBtn.textContent = allReady ? '🎮 开始比赛！' : '🔔 所有人已就绪，开始比赛';
+      statusLine.textContent = players.length === 0 ? '等待加入...' : 
+        allReady ? '等待主持人开始...' : '等待所有人点击"已就绪"按钮...';
+    }
+    
+    async function startGame() {
+      const startBtn = document.getElementById('startBtn');
+      startBtn.disabled = true;
+      startBtn.textContent = '正在开始...';
+      
+      socket.emit('start-game', { roomId });
+    }
+    
+    function copyRoomCode() {
+      navigator.clipboard.writeText(roomId);
+      alert('房间号已复制: ' + roomId);
+    }
+    
+    init();
+    
+    // 定期刷新状态
+    setInterval(fetchRoomStatus, 3000);
+  </script>
+</body>
+</html>

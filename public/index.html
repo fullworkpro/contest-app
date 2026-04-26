@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>竞赛系统 - 创建房间</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .container { background: white; border-radius: 16px; padding: 32px; width: 100%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    h1 { text-align: center; color: #333; margin-bottom: 8px; font-size: 24px; }
+    .subtitle { text-align: center; color: #666; margin-bottom: 24px; font-size: 14px; }
+    .input-group { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 8px; color: #333; font-weight: 500; }
+    input { width: 100%; padding: 14px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 16px; transition: border-color 0.3s; }
+    input:focus { outline: none; border-color: #667eea; }
+    .btn { width: 100%; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(102,126,234,0.4); }
+    .btn:active { transform: translateY(0); }
+    .btn-secondary { background: #f0f0f0; color: #333; margin-top: 12px; }
+    .tips { margin-top: 20px; padding: 16px; background: #f8f9fa; border-radius: 10px; font-size: 13px; color: #666; }
+    .tips h3 { font-size: 14px; margin-bottom: 8px; color: #333; }
+    .tips ul { padding-left: 20px; }
+    .tips li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏆 竞赛系统</h1>
+    <p class="subtitle">25道题 | 100分 | 实时排名</p>
+    
+    <div class="input-group">
+      <label>你的昵称</label>
+      <input type="text" id="nickname" placeholder="请输入昵称" maxlength="20">
+    </div>
+    
+    <button class="btn" onclick="createRoom()">创建竞赛房间</button>
+    <button class="btn btn-secondary" onclick="showJoin()">已有房间？加入</button>
+    
+    <div class="tips">
+      <h3>💡 使用说明</h3>
+      <ul>
+        <li>点击创建房间，获得房间号</li>
+        <li>分享房间号给朋友扫码加入</li>
+        <li>所有人就绪后开始比赛</li>
+        <li>按分数和用时排名</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // 保存昵称到本地
+    localStorage.setItem('contest_nickname', document.getElementById('nickname').value);
+    
+    function showJoin() {
+      const code = prompt('请输入房间号:');
+      if (code) {
+        window.location.href = '/room.html?room=' + code.toUpperCase();
+      }
+    }
+    
+    async function createRoom() {
+      const nickname = document.getElementById('nickname').value.trim() || '匿名玩家';
+      localStorage.setItem('contest_nickname', nickname);
+      
+      try {
+        const res = await fetch('/api/room/create', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'}
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.location.href = '/room.html?room=' + data.roomId;
+        } else {
+          alert(data.error || '创建失败');
+        }
+      } catch(e) {
+        alert('网络错误');
+      }
+    }
+    
+    // 页面加载时恢复昵称
+    const savedNickname = localStorage.getItem('contest_nickname');
+    if (savedNickname) {
+      document.getElementById('nickname').value = savedNickname;
+    }
+  </script>
+</body>
+</html>
