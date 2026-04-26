@@ -49,10 +49,17 @@
   </div>
 
   <script>
-    // 保存昵称到本地
-    localStorage.setItem('contest_nickname', document.getElementById('nickname').value);
-    
+    // 页面加载时恢复昵称
+    const savedNickname = localStorage.getItem('contest_nickname');
+    if (savedNickname) {
+      document.getElementById('nickname').value = savedNickname;
+    }
+
     function showJoin() {
+      // 先保存当前输入的昵称
+      const nickname = document.getElementById('nickname').value.trim() || '匿名玩家';
+      localStorage.setItem('contest_nickname', nickname);
+      
       const code = prompt('请输入房间号:');
       if (code) {
         window.location.href = '/room.html?room=' + code.toUpperCase();
@@ -75,14 +82,9 @@
           alert(data.error || '创建失败');
         }
       } catch(e) {
-        alert('网络错误');
+        console.error('Create room error:', e);
+        alert('网络错误: ' + e.message);
       }
-    }
-    
-    // 页面加载时恢复昵称
-    const savedNickname = localStorage.getItem('contest_nickname');
-    if (savedNickname) {
-      document.getElementById('nickname').value = savedNickname;
     }
   </script>
 </body>

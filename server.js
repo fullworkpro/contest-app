@@ -11,6 +11,8 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+
+// Railway 环境需要配置 Socket.io CORS
 const io = new Server(server, {
   cors: {
     origin: "*",
