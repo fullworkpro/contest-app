@@ -70,6 +70,7 @@ initQuestions();
 // 创建房间
 app.post('/api/room/create', (req, res) => {
   const roomId = uuidv4().substring(0, 8).toUpperCase();
+  const token = uuidv4();
   rooms.set(roomId, {
     id: roomId,
     status: 'waiting',      // waiting, ready, running, finished
@@ -77,7 +78,7 @@ app.post('/api/room/create', (req, res) => {
     startTime: null,
     questions: questions.map(q => ({ id: q.id, q: q.q, options: q.options }))
   });
-  res.json({ success: true, roomId });
+  res.json({ success: true, roomId, token });
 });
 
 // 加入房间

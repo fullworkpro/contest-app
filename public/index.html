@@ -77,6 +77,7 @@
         });
         const data = await res.json();
         if (data.success) {
+          localStorage.setItem('contest_token_' + data.roomId, data.token);
           window.location.href = '/room.html?room=' + data.roomId;
         } else {
           alert(data.error || '创建失败');
