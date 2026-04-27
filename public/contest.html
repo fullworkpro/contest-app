@@ -10,7 +10,6 @@
     .header { background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%); color: white; padding: 16px; position: sticky; top: 0; z-index: 100; }
     .header-content { max-width: 600px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
     .timer { font-size: 24px; font-weight: bold; font-family: monospace; }
-    .score-display { background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 20px; }
     .progress-bar { background: #f5f5f5; padding: 12px 16px; display: flex; gap: 8px; overflow-x: auto; position: sticky; top: 60px; z-index: 99; }
     .progress-dot { width: 28px; height: 28px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #666; flex-shrink: 0; cursor: pointer; transition: all 0.2s; }
     .progress-dot.current { background: #e53935; color: white; transform: scale(1.2); }
@@ -45,7 +44,6 @@
     <div class="header-content">
       <div>⭐ 党建知识竞赛</div>
       <div class="timer" id="timer">00:00</div>
-      <div class="score-display">得分: <span id="score">0</span></div>
     </div>
   </div>
   
@@ -161,27 +159,6 @@
       const q = questions[currentIndex];
       answers[q.id] = optionIndex;
       
-      // 实时提交答案
-      try {
-        const res = await fetch('/api/answer', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            token,
-            roomId,
-            questionId: q.id,
-            answer: optionIndex
-          })
-        });
-        const data = await res.json();
-        
-        if (data.success) {
-          document.getElementById('score').textContent = data.score;
-        }
-      } catch(e) {
-        console.error('提交答案失败');
-      }
-      
       renderProgressBar();
       
       // 更新选项样式
@@ -189,6 +166,11 @@
       opts.forEach((opt, i) => {
         opt.classList.toggle('selected', i === optionIndex);
       });
+      
+      // 自动跳到下一题
+      if (currentIndex < questions.length - 1) {
+        setTimeout(() => nextQuestion(), 200);
+      }
     }
     
     function startTimer() {
@@ -214,6 +196,16 @@
       clearInterval(timerInterval);
       
       try {
+        // 1. 批量提交所有答案，获取最终分数
+        const submitRes = await fetch('/api/submit-all', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ token, roomId, answers })
+        });
+        const submitData = await submitRes.json();
+        const finalScore = submitData.success ? submitData.score : 0;
+        
+        // 2. 标记完成
         await fetch('/api/finish', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -224,7 +216,7 @@
         const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
         const secs = (elapsed % 60).toString().padStart(2, '0');
         
-        document.getElementById('finalScore').textContent = document.getElementById('score').textContent;
+        document.getElementById('finalScore').textContent = finalScore;
         document.getElementById('finalTime').textContent = `${mins}:${secs}`;
         document.getElementById('resultModal').classList.remove('hidden');
         

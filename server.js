@@ -289,11 +289,6 @@ app.post('/api/answer', (req, res) => {
     return res.json({ success: false, error: '房间不存在' });
   }
   
-  // 检查比赛是否进行中
-  if (room.status !== 'running') {
-    return res.json({ success: false, error: '比赛未进行' });
-  }
-  
   // 记录答案
   player.answers[questionId] = answer;
   
@@ -312,13 +307,48 @@ app.post('/api/answer', (req, res) => {
     pInfo.score = score;
   }
   
-  // 检查是否全部完成
-  const allFinished = room.players.every(p => p.finished);
-  if (allFinished) {
-    room.status = 'finished';
+  res.json({ success: true, score, total: room.privateQuestions.length });
+});
+
+// 批量提交答案（交卷时调用）
+app.post('/api/submit-all', (req, res) => {
+  const { token, roomId, answers } = req.body;
+  
+  const playerKey = 'http_' + token;
+  let player = players.get(playerKey);
+  
+  if (!player) {
+    return res.json({ success: false, error: '玩家不存在' });
   }
   
-  res.json({ success: true, score });
+  const room = rooms.get(roomId);
+  if (!room) {
+    return res.json({ success: false, error: '房间不存在' });
+  }
+  
+  // 批量记录答案
+  if (answers && typeof answers === 'object') {
+    for (const [qId, ans] of Object.entries(answers)) {
+      player.answers[qId] = ans;
+    }
+  }
+  
+  // 计算分数
+  let score = 0;
+  for (const q of room.privateQuestions) {
+    if (player.answers[q.id] !== undefined && player.answers[q.id] === q.answer) {
+      score += 4;
+    }
+  }
+  player.score = score;
+  
+  // 更新房间中的玩家信息
+  const pInfo = room.players.find(p => p.token === token);
+  if (pInfo) {
+    pInfo.score = score;
+  }
+  
+  res.json({ success: true, score, total: room.privateQuestions.length });
 });
 
 // 标记完成

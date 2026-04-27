@@ -42,7 +42,8 @@
     const roomId = urlParams.get('room');
     const token = urlParams.get('token');
     
-    let polling = true;
+    let retries = 0;
+    const MAX_RETRIES = 10;
     
     async function loadResult() {
       if (!roomId || !token) {
@@ -56,6 +57,18 @@
         const data = await res.json();
         
         if (!data.success) {
+          // 可能数据还没准备好（比赛刚结束），稍后重试
+          if (retries < MAX_RETRIES) {
+            retries++;
+            document.getElementById('resultContainer').innerHTML = `
+              <div class="loading">
+                <div class="spinner"></div>
+                <p>加载成绩中... (${retries}/${MAX_RETRIES})</p>
+              </div>
+            `;
+            setTimeout(loadResult, 2000);
+            return;
+          }
           document.getElementById('resultContainer').innerHTML = `
             <p style="color: red; text-align: center;">${data.error || '加载失败'}</p>
             <button class="btn btn-secondary" onclick="window.location.href='/'">返回首页</button>
@@ -94,27 +107,23 @@
             </div>
           </div>
           
-          ${result.finished ? '' : '<div class="rank-display"><div class="rank-label">比赛进行中...</div></div>'}
-          
           <button class="btn" onclick="viewRanking()">📊 查看排名</button>
           <button class="btn btn-secondary" onclick="window.location.href='/'">返回首页</button>
-        `);
-        
-        // 如果比赛还在进行中，继续轮询
-        if (!result.finished && polling) {
-          polling = false;
-          let countdown = 5;
-          const interval = setInterval(() => {
-            countdown--;
-            if (countdown <= 0 || !polling) {
-              clearInterval(interval);
-              return;
-            }
-            loadResult();
-          }, 3000);
-        }
+        `;
         
       } catch(e) {
+        // 网络错误重试
+        if (retries < MAX_RETRIES) {
+          retries++;
+          document.getElementById('resultContainer').innerHTML = `
+            <div class="loading">
+              <div class="spinner"></div>
+              <p>加载成绩中... (${retries}/${MAX_RETRIES})</p>
+            </div>
+          `;
+          setTimeout(loadResult, 2000);
+          return;
+        }
         document.getElementById('resultContainer').innerHTML = `
           <p style="color: red; text-align: center;">网络错误</p>
           <button class="btn btn-secondary" onclick="window.location.href='/'">返回首页</button>
