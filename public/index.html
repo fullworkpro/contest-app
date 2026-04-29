@@ -22,12 +22,15 @@
     .tips h3 { font-size: 14px; margin-bottom: 8px; color: #333; }
     .tips ul { padding-left: 20px; }
     .tips li { margin-bottom: 4px; }
+    .admin-link { text-align: center; margin-top: 16px; font-size: 13px; }
+    .admin-link a { color: #667eea; text-decoration: none; }
+    .admin-link a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>🏆 竞赛系统</h1>
-    <p class="subtitle">25道题 | 100分 | 实时排名</p>
+    <p class="subtitle" id="contestSubtitle">25道题 | 100分 | 实时排名</p>
     
     <div class="input-group">
       <label>你的昵称</label>
@@ -46,10 +49,14 @@
         <li>按分数和用时排名</li>
       </ul>
     </div>
+    
+    <div class="admin-link">
+      <a href="/admin.html">🔐 管理后台</a>
+    </div>
   </div>
 
   <script>
-    // 页面加载时恢复昵称
+    // 页面加载时获取竞赛名称
     const savedNickname = localStorage.getItem('contest_nickname');
     if (savedNickname) {
       document.getElementById('nickname').value = savedNickname;

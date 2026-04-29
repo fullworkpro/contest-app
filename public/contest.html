@@ -17,14 +17,20 @@
     .progress-dot.answered { background: #4caf50; color: white; }
     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
     .question-card { background: white; border-radius: 16px; padding: 24px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    .question-number { background: #667eea; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; margin-bottom: 12px; }
+    .question-type { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; margin-bottom: 10px; }
+    .type-single { background: #e3f2fd; color: #1565c0; }
+    .type-multi { background: #fce4ec; color: #c62828; }
+    .type-judge { background: #e8f5e9; color: #2e7d32; }
+    .question-number { background: #667eea; color: white; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; margin-bottom: 12px; margin-right: 8px; }
     .question-text { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 20px; line-height: 1.6; }
     .options { display: flex; flex-direction: column; gap: 12px; }
-    .option { padding: 16px; background: #f8f9fa; border: 2px solid #e0e0e0; border-radius: 12px; cursor: pointer; transition: all 0.2s; font-size: 15px; }
+    .option { padding: 16px; background: #f8f9fa; border: 2px solid #e0e0e0; border-radius: 12px; cursor: pointer; transition: all 0.2s; font-size: 15px; display: flex; align-items: center; }
     .option:hover { border-color: #667eea; background: #f0f4ff; }
     .option.selected { border-color: #667eea; background: #667eea; color: white; }
-    .option::before { content: attr(data-index); display: inline-block; width: 24px; height: 24px; background: #e0e0e0; border-radius: 50%; text-align: center; line-height: 24px; margin-right: 12px; font-size: 12px; }
-    .option.selected::before { background: rgba(255,255,255,0.3); }
+    .option .index-mark { display: inline-flex; width: 24px; height: 24px; background: #e0e0e0; border-radius: 50%; align-items: center; justify-content: center; margin-right: 12px; font-size: 12px; flex-shrink: 0; }
+    .option.selected .index-mark { background: rgba(255,255,255,0.3); }
+    .option .checkbox-mark { display: inline-flex; width: 22px; height: 22px; border: 2px solid #999; border-radius: 4px; align-items: center; justify-content: center; margin-right: 12px; font-size: 14px; flex-shrink: 0; background: white; }
+    .option.selected .checkbox-mark { background: rgba(255,255,255,0.9); border-color: white; color: #667eea; }
     .nav-buttons { display: flex; gap: 12px; padding: 16px; position: fixed; bottom: 0; left: 0; right: 0; background: white; box-shadow: 0 -4px 12px rgba(0,0,0,0.1); }
     .nav-btn { flex: 1; padding: 14px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
     .nav-btn.prev { background: #f0f0f0; color: #333; }
@@ -38,6 +44,7 @@
     .modal-score { font-size: 48px; font-weight: bold; color: #667eea; margin: 16px 0; }
     .modal-time { color: #666; margin-bottom: 24px; }
     .modal-btn { padding: 14px 32px; background: #667eea; color: white; border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
+    .multi-hint { font-size: 13px; color: #888; margin-bottom: 16px; }
   </style>
 </head>
 <body>
@@ -76,7 +83,7 @@
     
     let questions = [];
     let currentIndex = 0;
-    let answers = {};
+    let answers = {};     // { qId: answer }  单选/判断存索引数字，多选存数组
     let startTime = null;
     let timerInterval;
     
@@ -87,7 +94,6 @@
         return;
       }
       
-      // 获取题目
       try {
         const res = await fetch('/api/room/' + roomId + '/questions');
         const data = await res.json();
@@ -100,6 +106,12 @@
         
         questions = data.questions;
         startTime = Date.now();
+        
+        // 恢复历史答案
+        const saved = localStorage.getItem('contest_answers_' + roomId + '_' + token);
+        if (saved) {
+          try { answers = JSON.parse(saved); } catch(e) {}
+        }
         
         renderProgressBar();
         renderQuestion();
@@ -114,25 +126,74 @@
     function renderProgressBar() {
       const bar = document.getElementById('progressBar');
       bar.innerHTML = questions.map((q, i) => `
-        <div class="progress-dot ${i === currentIndex ? 'current' : ''} ${answers[q.id] !== undefined ? 'answered' : ''}" 
+        <div class="progress-dot ${i === currentIndex ? 'current' : ''} ${isAnswered(q.id) ? 'answered' : ''}" 
              onclick="goToQuestion(${i})">${i + 1}</div>
       `).join('');
+    }
+    
+    function isAnswered(qId) {
+      const ans = answers[qId];
+      if (ans === undefined || ans === null) return false;
+      if (Array.isArray(ans)) return ans.length > 0;
+      return true;
+    }
+    
+    function getTypeLabel(type) {
+      const labels = { single: '单选题', multi: '多选题', judge: '判断题' };
+      return labels[type] || type;
+    }
+    
+    function getTypeClass(type) {
+      const classes = { single: 'type-single', multi: 'type-multi', judge: 'type-judge' };
+      return classes[type] || '';
     }
     
     function renderQuestion() {
       const q = questions[currentIndex];
       const container = document.getElementById('questionContainer');
+      const selectedAns = answers[q.id];
+      const isMulti = q.type === 'multi';
+      const isJudge = q.type === 'judge';
+      
+      let optionsHtml;
+      
+      if (isJudge) {
+        // 判断题：对/错两个按钮
+        optionsHtml = q.options.map((opt, i) => {
+          const sel = selectedAns === i;
+          return `<div class="option ${sel ? 'selected' : ''}" onclick="selectJudgeOption(${i})">
+            <span class="index-mark">${i === 0 ? '✓' : '✗'}</span>${opt}
+          </div>`;
+        }).join('');
+      } else if (isMulti) {
+        // 多选题：checkbox样式
+        const selectedArr = Array.isArray(selectedAns) ? selectedAns : [];
+        optionsHtml = q.options.map((opt, i) => {
+          const sel = selectedArr.includes(i);
+          return `<div class="option ${sel ? 'selected' : ''}" onclick="toggleMultiOption(${i})">
+            <span class="checkbox-mark">${sel ? '✓' : ''}</span>${opt}
+          </div>`;
+        }).join('');
+        optionsHtml = '<div class="multi-hint">💡 多选题，可选择一个或多个选项</div>' + optionsHtml;
+      } else {
+        // 单选题：radio样式（原有）
+        optionsHtml = q.options.map((opt, i) => {
+          const sel = selectedAns === i;
+          return `<div class="option ${sel ? 'selected' : ''}" onclick="selectSingleOption(${i})">
+            <span class="index-mark">${String.fromCharCode(65 + i)}</span>${opt}
+          </div>`;
+        }).join('');
+      }
       
       container.innerHTML = `
         <div class="question-card">
-          <div class="question-number">${q.id}</div>
+          <div>
+            <span class="question-number">${currentIndex + 1}</span>
+            <span class="question-type ${getTypeClass(q.type)}">${getTypeLabel(q.type)}</span>
+          </div>
           <div class="question-text">${q.q}</div>
           <div class="options">
-            ${q.options.map((opt, i) => `
-              <div class="option ${answers[q.id] === i ? 'selected' : ''}" 
-                   data-index="${String.fromCharCode(65 + i)}"
-                   onclick="selectOption(${i})">${opt}</div>
-            `).join('')}
+            ${optionsHtml}
           </div>
         </div>
       `;
@@ -146,35 +207,57 @@
     }
     
     function prevQuestion() {
-      if (currentIndex > 0) {
-        goToQuestion(currentIndex - 1);
-      }
+      if (currentIndex > 0) goToQuestion(currentIndex - 1);
     }
     
     function nextQuestion() {
-      if (currentIndex < questions.length - 1) {
-        goToQuestion(currentIndex + 1);
-      }
+      if (currentIndex < questions.length - 1) goToQuestion(currentIndex + 1);
     }
     
-    async function selectOption(optionIndex) {
+    // 单选题
+    async function selectSingleOption(optionIndex) {
       const q = questions[currentIndex];
       answers[q.id] = optionIndex;
+      saveAndSubmit(q.id, optionIndex);
+    }
+    
+    // 判断题
+    async function selectJudgeOption(optionIndex) {
+      const q = questions[currentIndex];
+      answers[q.id] = optionIndex;
+      saveAndSubmit(q.id, optionIndex);
+    }
+    
+    // 多选题：切换选中状态
+    async function toggleMultiOption(optionIndex) {
+      const q = questions[currentIndex];
+      let selected = Array.isArray(answers[q.id]) ? answers[q.id] : [];
+      const idx = selected.indexOf(optionIndex);
+      if (idx >= 0) {
+        selected.splice(idx, 1);
+      } else {
+        selected.push(optionIndex);
+      }
+      answers[q.id] = selected;
       
-      // 实时提交答案
+      // 多选不实时提交（等跳转或交卷时批量提交）
+      saveAndSubmit(q.id, selected);
+    }
+    
+    // 保存并提交
+    async function saveAndSubmit(qId, answer) {
+      // 更新进度条和UI
+      renderProgressBar();
+      renderQuestion();
+      
+      // 实时提交单个答案到服务器
       try {
         const res = await fetch('/api/answer', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            token,
-            roomId,
-            questionId: q.id,
-            answer: optionIndex
-          })
+          body: JSON.stringify({ token, roomId, questionId: qId, answer })
         });
         const data = await res.json();
-        
         if (data.success) {
           document.getElementById('score').textContent = data.score;
         }
@@ -182,13 +265,11 @@
         console.error('提交答案失败');
       }
       
-      renderProgressBar();
-      
-      // 更新选项样式
-      const opts = document.querySelectorAll('.option');
-      opts.forEach((opt, i) => {
-        opt.classList.toggle('selected', i === optionIndex);
-      });
+      // 单选题和判断题自动跳到下一题
+      const q = questions[currentIndex];
+      if ((q.type === 'single' || q.type === 'judge') && currentIndex < questions.length - 1) {
+        setTimeout(() => nextQuestion(), 200);
+      }
     }
     
     function startTimer() {
@@ -214,6 +295,15 @@
       clearInterval(timerInterval);
       
       try {
+        // 提交所有答案
+        const submitRes = await fetch('/api/submit-all', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ token, roomId, answers })
+        });
+        const submitData = await submitRes.json();
+        
+        // 标记完成
         await fetch('/api/finish', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -224,7 +314,7 @@
         const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
         const secs = (elapsed % 60).toString().padStart(2, '0');
         
-        document.getElementById('finalScore').textContent = document.getElementById('score').textContent;
+        document.getElementById('finalScore').textContent = submitData.success ? submitData.score : '0';
         document.getElementById('finalTime').textContent = `${mins}:${secs}`;
         document.getElementById('resultModal').classList.remove('hidden');
         
@@ -241,14 +331,6 @@
     window.addEventListener('beforeunload', () => {
       localStorage.setItem('contest_answers_' + roomId + '_' + token, JSON.stringify(answers));
     });
-    
-    // 恢复答案
-    const savedAnswers = localStorage.getItem('contest_answers_' + roomId + '_' + token);
-    if (savedAnswers) {
-      try {
-        answers = JSON.parse(savedAnswers);
-      } catch(e) {}
-    }
     
     init();
   </script>
